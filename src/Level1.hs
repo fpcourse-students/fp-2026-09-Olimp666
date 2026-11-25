@@ -3,12 +3,10 @@
 -- | Обязательный уровень: обход структуры и небольшой язык парсеров.
 module Level1 where
 
-import Control.Applicative
+import Control.Applicative (Alternative (empty, many, (<|>)))
 import Lexer (Token)
-import MetaUtils
-import MyIO
-import Parser
-
+import MyIO (MyIO, writeInt)
+import Parser (Assignment (Assignment), MyParser (MyParser), decimal, eof, identifier, satisfy, token)
 
 -- 1.1. Обходы и учебная консоль.
 -- Реализуйте Traversable Point3 через Applicative: обход слева направо,
@@ -28,15 +26,19 @@ instance Applicative Point3 where
 
   Point3 f g h <*> Point3 x y z = Point3 (f x) (g y) (h z)
 
-todoImpl ''Traversable ''Point3
+instance Traversable Point3 where
+  traverse f x = case x of
+    Point3 a b c -> Point3 <$> f a <*> f b <*> f c
 
 -- Через свой traverse и writeInt напишите printSum:
 -- печать компонент первой точки, второй и их суммы, слева направо.
 -- Функции *UnsafeMyIO используйте только для проверки.
 
-printSum :: Point3 Int -> Point3 Int -> MyIO ()
-printSum = todo "printSum"
+printPoint :: (Traversable t) => t Int -> MyIO ()
+printPoint p = () <$ traverse writeInt p
 
+printSum :: Point3 Int -> Point3 Int -> MyIO ()
+printSum p1 p2 = printPoint p1 *> printPoint p2 *> printPoint (Point3 (+) (+) (+) <*> p1 <*> p2)
 
 -- 1.2. Прочитайте, прежде чем писать.
 -- В Parser.hs даны тип MyParser, примитивы и пример parseAssignmentManual.
@@ -47,14 +49,13 @@ printSum = todo "printSum"
 --    runMyParser (length <$> anyToken) ["hello", "!"]
 
 answerAssignment :: Maybe ([Token], Assignment)
-answerAssignment = todo "answerAssignment"
+answerAssignment = Just ([";"], (Assignment "count" 42))
 
 answerInvalid :: Maybe ([Token], Assignment)
-answerInvalid = todo "answerInvalid"
+answerInvalid = Nothing
 
 answerMapped :: Maybe ([Token], Int)
-answerMapped = todo "answerMapped"
-
+answerMapped = Just (["!"], 5)
 
 -- 1.3. Три операции над парсерами.
 -- Заполните по одному пропуску в каждом инстансе:
@@ -65,14 +66,14 @@ answerMapped = todo "answerMapped"
 instance Functor MyParser where
   fmap f (MyParser p) = MyParser \ts -> case p ts of
     Nothing -> Nothing
-    Just (rest, x) -> todo "fmap success"
+    Just (rest, x) -> Just (rest, f x)
 
 instance Applicative MyParser where
   pure x = MyParser \ts -> Just (ts, x)
 
   MyParser pf <*> MyParser px = MyParser \ts -> case pf ts of
     Nothing -> Nothing
-    Just (rest, f) -> case todo "applicative next" of
+    Just (rest, f) -> case px rest of
       Nothing -> Nothing
       Just (rest', x) -> Just (rest', f x)
 
@@ -80,13 +81,12 @@ instance Alternative MyParser where
   empty = MyParser $ const Nothing
 
   MyParser p <|> MyParser q = MyParser \ts -> case p ts of
-    Nothing -> todo "alternative fallback"
+    Nothing -> q ts
     success -> success
 
 -- Через fmap преобразуем числовой токен в натуральное число (включая 0).
 natural :: MyParser Int
 natural = read <$> satisfy decimal
-
 
 -- 1.4. Файл настроек.
 -- Через комбинаторы напишите parseAssignment для записи name = 42
@@ -97,7 +97,7 @@ natural = read <$> satisfy decimal
 --   == Just ([], [Assignment "count" 42, Assignment "limit" 10])
 
 parseAssignment :: MyParser Assignment
-parseAssignment = todo "parseAssignment"
+parseAssignment = Assignment <$> identifier <* token "=" <*> natural
 
 parseAssignments :: MyParser [Assignment]
-parseAssignments = todo "parseAssignments"
+parseAssignments = many (parseAssignment <* token ";") <* eof
